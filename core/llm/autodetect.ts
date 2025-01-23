@@ -68,6 +68,7 @@ const PROVIDER_SUPPORTS_IMAGES: string[] = [
   "vertexai",
   "azure",
   "scaleway",
+  "fujitsu",
 ];
 
 const MODEL_SUPPORTS_IMAGES: string[] = [

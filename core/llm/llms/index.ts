@@ -21,6 +21,7 @@ import Deepseek from "./Deepseek";
 import Fireworks from "./Fireworks";
 import Flowise from "./Flowise";
 import FreeTrial from "./FreeTrial";
+import Fujitsu from "./Fujitsu";
 import FunctionNetwork from "./FunctionNetwork";
 import Gemini from "./Gemini";
 import Groq from "./Groq";
@@ -100,6 +101,7 @@ export const LLMClasses = [
   xAI,
   SiliconFlow,
   Scaleway,
+  Fujitsu,
 ];
 
 export async function llmFromDescription(

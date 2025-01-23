@@ -900,4 +900,27 @@ To get started, [register](https://dataplatform.cloud.ibm.com/registration/stepo
     ],
     apiKeyUrl: "https://cloud.siliconflow.cn/account/ak",
   },
+  fujitsu: {
+    title: "Fujitsu",
+    provider: "fujitsu",
+    icon: "fujitsu.png",
+    description: "Fujitsu provides cheap open-source models.",
+    longDescription:
+      "Fujitsu, obtain an API key from their website [here](https://chat.ai-service.global.fujitsu.com/key-manager).",
+    tags: [ModelProviderTags.RequiresApiKey, ModelProviderTags.OpenSource],
+    collectInputFor: [
+      {
+        inputType: "text",
+        key: "apiKey",
+        label: "API Key",
+        placeholder: "Enter your Fujitsu API key",
+        required: true,
+      },
+    ],
+    packages: [
+      models.gpt4omini,
+      models.gpt4o,
+    ],
+    apiKeyUrl: "https://chat.ai-service.global.fujitsu.com/key-manager",
+  },
 };
