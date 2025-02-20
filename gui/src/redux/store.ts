@@ -1,5 +1,4 @@
 import { combineReducers, configureStore } from "@reduxjs/toolkit";
-import miscReducer from "./slices/miscSlice";
 import {
   createMigrate,
   MigrationManifest,
@@ -10,9 +9,10 @@ import { createFilter } from "redux-persist-transform-filter";
 import autoMergeLevel2 from "redux-persist/lib/stateReconciler/autoMergeLevel2";
 import storage from "redux-persist/lib/storage";
 import { IdeMessenger, IIdeMessenger } from "../context/IdeMessenger";
-import editModeStateReducer from "./slices/editModeState";
 import configReducer from "./slices/configSlice";
+import editModeStateReducer from "./slices/editModeState";
 import indexingReducer from "./slices/indexingSlice";
+import miscReducer from "./slices/miscSlice";
 import sessionReducer from "./slices/sessionSlice";
 import uiReducer from "./slices/uiSlice";
 
@@ -31,11 +31,17 @@ const rootReducer = combineReducers({
 });
 
 const saveSubsetFilters = [
-  createFilter("session", ["history", "sessionId"]),
+  createFilter("session", [
+    "history",
+    "sessionId",
+    "selectedOrganizationId",
+    "selectedProfile",
+  ]),
   // Don't persist any of the edit state for now
   createFilter("editModeState", []),
   createFilter("config", ["defaultModelTitle"]),
   createFilter("ui", ["toolSettings", "useTools"]),
+  createFilter("indexing", []),
 ];
 
 const migrations: MigrationManifest = {

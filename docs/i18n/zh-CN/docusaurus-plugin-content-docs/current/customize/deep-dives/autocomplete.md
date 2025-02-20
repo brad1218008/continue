@@ -44,7 +44,7 @@ ollama run starcoder2:3b
 }
 ```
 
-如果你对可用选项不熟悉，你可以在 [这里](../../reference.md) 查找完整的参考。
+如果你对可用选项不熟悉，你可以在 [这里](../../json-reference.md) 查找完整的参考。
 
 ## 配置选项
 
@@ -60,7 +60,6 @@ ollama run starcoder2:3b
 
 - `disable`: 禁用自动补全（也可以在 IDE 配置中完成）
 - `template`: 一个用来自动补全的可选的模板字符串。它使用 Mustache 模板语言渲染，并且传递 'prefix' 和 'suffix' 变量。（字符串）
-- `useFileSuffix`: 决定是否使用文件后缀在提示词中。（布尔型）
 - `maxPromptTokens`: 提示词使用的 token 的最大数量。一个较小的数字生成较快的补全，但是较少的上下文。（数字）
 - `prefixPercentage`: 输入专注于前缀的百分比。（数字）
 - `maxSuffixPercentage`: The maximum percentage of the prompt that can be dedicated to the suffix. (Number)
