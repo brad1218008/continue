@@ -1,13 +1,11 @@
 package com.github.continuedev.continueintellijextension.`continue`
 
-import IntelliJIDE
 import com.github.continuedev.continueintellijextension.*
 import com.github.continuedev.continueintellijextension.activities.ContinuePluginDisposable
 import com.github.continuedev.continueintellijextension.activities.showTutorial
-import com.github.continuedev.continueintellijextension.auth.AuthListener
 import com.github.continuedev.continueintellijextension.auth.ContinueAuthService
-import com.github.continuedev.continueintellijextension.editor.DiffStreamHandler
 import com.github.continuedev.continueintellijextension.editor.DiffStreamService
+import com.github.continuedev.continueintellijextension.editor.EditorUtils
 import com.github.continuedev.continueintellijextension.protocol.*
 import com.github.continuedev.continueintellijextension.services.*
 import com.github.continuedev.continueintellijextension.utils.*
@@ -17,16 +15,14 @@ import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.components.ServiceManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.editor.SelectionModel
-import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.vfs.VirtualFileManager
+import com.intellij.openapi.wm.ToolWindowManager
 import kotlinx.coroutines.*
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
-import kotlin.coroutines.resume
 
 
 class IdeProtocolClient(
@@ -35,6 +31,17 @@ class IdeProtocolClient(
     private val project: Project
 ) : DumbAware {
     private val ide: IDE = IntelliJIDE(project, continuePluginService)
+    private val diffStreamService = project.service<DiffStreamService>()
+
+
+    /**
+     * Create a dispatcher with limited parallelism to prevent UI freezing.
+     * Note that there are 64 total threads available to the IDE.
+     *
+     * See this thread for details: https://github.com/continuedev/continue/issues/4098#issuecomment-2854865310
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val limitedDispatcher = Dispatchers.IO.limitedParallelism(4)
 
     init {
         // Setup config.json / config.ts save listeners
@@ -43,8 +50,12 @@ class IdeProtocolClient(
         )
     }
 
+    fun updateLastFileSaveTimestamp() {
+        (ide as IntelliJIDE).updateLastFileSaveTimestamp()
+    }
+
     fun handleMessage(msg: String, respond: (Any?) -> Unit) {
-        coroutineScope.launch(Dispatchers.IO) {
+        coroutineScope.launch(limitedDispatcher) {
             val message = Gson().fromJson(msg, Message::class.java)
             val messageType = message.messageType
             val dataElement = message.data
@@ -104,11 +115,6 @@ class IdeProtocolClient(
                     "logoutOfControlPlane" -> {
                         val authService = service<ContinueAuthService>()
                         authService.signOut()
-                        ApplicationManager.getApplication().messageBus.syncPublisher(AuthListener.TOPIC)
-                            .handleUpdatedSessionInfo(null)
-
-                        // Tell the webview that session info changed
-                        continuePluginService.sendToWebview("didChangeControlPlaneSessionInfo", null, uuid())
 
                         respond(null)
                     }
@@ -332,12 +338,29 @@ class IdeProtocolClient(
                         respond(result)
                     }
 
+                    "closeSidebar" -> {
+                        ApplicationManager.getApplication().invokeLater {
+                            val toolWindowManager = ToolWindowManager.getInstance(project)
+                            val toolWindow = toolWindowManager.getToolWindow("Continue")
+                            toolWindow?.hide()
+                        }
+                    }
+
                     "getSearchResults" -> {
                         val params = Gson().fromJson(
                             dataElement.toString(),
                             GetSearchResultsParams::class.java
                         )
                         val results = ide.getSearchResults(params.query)
+                        respond(results)
+                    }
+
+                    "getFileResults" -> {
+                        val params = Gson().fromJson(
+                            dataElement.toString(),
+                            GetFileResultsParams::class.java
+                        )
+                        val results = ide.getFileResults(params.pattern)
                         respond(results)
                     }
 
@@ -412,111 +435,49 @@ class IdeProtocolClient(
                         }
                     }
 
+                    "acceptDiff" -> {
+                        val params = Gson().fromJson(
+                            dataElement.toString(),
+                            AcceptDiffParams::class.java
+                        )
+                        val filepath = params.filepath;
+
+                        val editor = EditorUtils.getOrOpenEditor(project, filepath)?.editor
+
+                        if (editor != null) {
+                            diffStreamService.accept(editor)
+                        }
+
+                        respond(null)
+                    }
+
+                    "rejectDiff" -> {
+                        val params = Gson().fromJson(
+                            dataElement.toString(),
+                            RejectDiffParams::class.java
+                        )
+                        val filepath = params.filepath;
+
+                        val editor = EditorUtils.getOrOpenEditor(project, filepath)?.editor
+                        if (editor != null) {
+                            diffStreamService.reject(editor)
+                        }
+                        respond(null)
+
+                    }
+
                     "applyToFile" -> {
                         val params = Gson().fromJson(
                             dataElement.toString(),
                             ApplyToFileParams::class.java
                         )
 
-                        val editor = FileEditorManager.getInstance(project).selectedTextEditor
-
-                        if (editor == null) {
-                            ide.showToast(ToastType.ERROR, "No active editor to apply edits to")
-                            respond(null)
-                            return@launch
-                        }
-
-                        if (editor.document.text.trim().isEmpty()) {
-                            WriteCommandAction.runWriteCommandAction(project) {
-                                editor.document.insertString(0, msg)
-                            }
-                            respond(null)
-                            return@launch
-                        }
-
-
-                        val llm: Any = try {
-                            suspendCancellableCoroutine { continuation ->
-                                continuePluginService.coreMessenger?.request(
-                                    "config/getSerializedProfileInfo",
-                                    null,
-                                    null
-                                ) { response ->
-                                    val responseObject = response as Map<*, *>
-                                    val responseContent = responseObject["content"] as Map<*, *>
-                                    val result = responseContent["result"] as Map<*, *>
-                                    val config = result["config"] as Map<String, Any>
-
-                                    val applyCodeBlockModel = getModelByRole(config, "applyCodeBlock")
-
-                                    if (applyCodeBlockModel != null) {
-                                        continuation.resume(applyCodeBlockModel)
-                                    }
-
-                                    val models =
-                                        config["models"] as List<Map<String, Any>>
-                                    val curSelectedModel = models.find { it["title"] == params.curSelectedModelTitle }
-
-                                    if (curSelectedModel == null) {
-                                        return@request
-                                    } else {
-                                        continuation.resume(curSelectedModel)
-                                    }
-                                }
-                            }
-                        } catch (e: Exception) {
-                            launch {
-                                ide.showToast(
-                                    ToastType.ERROR, "Failed to fetch model configuration"
-                                )
-                            }
-                            respond(null)
-                            return@launch
-                        }
-
-
-                        val diffStreamService = project.service<DiffStreamService>()
-                        // Clear all diff blocks before running the diff stream
-                        diffStreamService.reject(editor)
-
-                        val llmTitle = (llm as? Map<*, *>)?.get("title") as? String ?: ""
-
-                        val prompt =
-                            "The following code was suggested as an edit:\n```\n${params.text}\n```\nPlease apply it to the previous code."
-
-                        val rif = getHighlightedCode()
-
-                        val (prefix, highlighted, suffix) = if (rif == null) {
-                            // If no highlight, use the whole document as highlighted
-                            Triple("", editor.document.text, "")
-                        } else {
-                            val prefix = editor.document.getText(TextRange(0, rif.range.start.character))
-                            val highlighted = rif.contents
-                            val suffix =
-                                editor.document.getText(TextRange(rif.range.end.character, editor.document.textLength))
-
-                            // Remove the selection after processing
-                            ApplicationManager.getApplication().invokeLater {
-                                editor.selectionModel.removeSelection()
-                            }
-
-                            Triple(prefix, highlighted, suffix)
-                        }
-
-                        val diffStreamHandler =
-                            DiffStreamHandler(
-                                project,
-                                editor,
-                                rif?.range?.start?.line ?: 0,
-                                rif?.range?.end?.line ?: (editor.document.lineCount - 1),
-                                {}, {})
-
-                        diffStreamService.register(diffStreamHandler, editor)
-
-                        diffStreamHandler.streamDiffLinesToEditor(
-                            prompt, prefix, highlighted, suffix, llmTitle
+                        ApplyToFileHandler.apply(
+                            project,
+                            continuePluginService,
+                            ide,
+                            params
                         )
-
                         respond(null)
                     }
 
@@ -530,52 +491,15 @@ class IdeProtocolClient(
         }
     }
 
-    private fun getHighlightedCode(): RangeInFileWithContents? {
-        val result = ApplicationManager.getApplication().runReadAction<RangeInFileWithContents?> {
-            // Get the editor instance for the currently active editor window
-            val editor = FileEditorManager.getInstance(project).selectedTextEditor ?: return@runReadAction null
-            val virtualFile =
-                editor.let { FileDocumentManager.getInstance().getFile(it.document) } ?: return@runReadAction null
-
-            // Get the selection range and content
-            val selectionModel: SelectionModel = editor.selectionModel
-            val selectedText = selectionModel.selectedText ?: ""
-
-            val document = editor.document
-            val startOffset = selectionModel.selectionStart
-            val endOffset = selectionModel.selectionEnd
-
-            if (startOffset == endOffset) {
-                return@runReadAction null
-            }
-
-            val startLine = document.getLineNumber(startOffset)
-            val endLine = document.getLineNumber(endOffset)
-
-            val startChar = startOffset - document.getLineStartOffset(startLine)
-            val endChar = endOffset - document.getLineStartOffset(endLine)
-
-            return@runReadAction virtualFile.toUriOrNull()?.let {
-                RangeInFileWithContents(
-                    it, Range(
-                        Position(startLine, startChar),
-                        Position(endLine, endChar)
-                    ), selectedText
-                )
-            }
-        }
-
-        return result
-    }
-
     fun sendHighlightedCode(edit: Boolean = false) {
-        val rif = getHighlightedCode() ?: return
+        val editor = EditorUtils.getEditor(project)
+        val rif = editor?.getHighlightedCode() ?: return
 
         continuePluginService.sendToWebview(
             "highlightedCode",
-            mapOf(
-                "rangeInFileWithContents" to rif,
-                "edit" to edit
+            HighlightedCodePayload(
+                rangeInFileWithContents = rif,
+                shouldRun = edit
             )
         )
     }
@@ -585,22 +509,8 @@ class IdeProtocolClient(
         continuePluginService.sendToWebview("acceptRejectDiff", AcceptRejectDiff(accepted, stepIndex), uuid())
     }
 
+
     fun deleteAtIndex(index: Int) {
         continuePluginService.sendToWebview("deleteAtIndex", DeleteAtIndex(index), uuid())
-    }
-
-    private fun getModelByRole(
-        config: Any,
-        role: Any
-    ): Any? {
-        val experimental = (config as? Map<*, *>)?.get("experimental") as? Map<*, *>
-        val roleTitle = (experimental?.get("modelRoles") as? Map<*, *>)?.get(role) as? String ?: return null
-
-        val models = (config as? Map<*, *>)?.get("models") as? List<*>
-        val matchingModel = models?.find { model ->
-            (model as? Map<*, *>)?.get("title") == roleTitle
-        }
-
-        return matchingModel
     }
 }

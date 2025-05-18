@@ -37,11 +37,23 @@ export class AnthropicApi implements BaseLlmApi {
       stop = [oaiBody.stop];
     }
 
+    const systemMessage = oaiBody.messages.find(
+      (msg) => msg.role === "system",
+    )?.content;
+
     const anthropicBody = {
       messages: this._convertMessages(
         oaiBody.messages.filter((msg) => msg.role !== "system"),
       ),
-      system: oaiBody.messages.find((msg) => msg.role === "system")?.content,
+      system: systemMessage
+        ? [
+            {
+              type: "text",
+              text: systemMessage,
+              cache_control: { type: "ephemeral" },
+            },
+          ]
+        : systemMessage,
       top_p: oaiBody.top_p,
       temperature: oaiBody.temperature,
       max_tokens: oaiBody.max_tokens ?? 4096, // max_tokens is required
@@ -71,6 +83,32 @@ export class AnthropicApi implements BaseLlmApi {
     msgs: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
   ): any[] {
     const messages = msgs.map((message) => {
+      if (message.role === "tool") {
+        return {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: message.tool_call_id,
+              content:
+                typeof message.content === "string"
+                  ? message.content
+                  : message.content.map((part) => part.text).join(""),
+            },
+          ],
+        };
+      } else if (message.role === "assistant" && message.tool_calls) {
+        return {
+          role: "assistant",
+          content: message.tool_calls.map((toolCall) => ({
+            type: "tool_use",
+            id: toolCall.id,
+            name: toolCall.function?.name,
+            input: JSON.parse(toolCall.function?.arguments || "{}"),
+          })),
+        };
+      }
+
       if (!Array.isArray(message.content)) {
         return message;
       }

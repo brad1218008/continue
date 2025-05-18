@@ -3,7 +3,7 @@
   "parser": "@typescript-eslint/parser",
   "plugins": ["@typescript-eslint", "eslint-plugin-react"],
   "parserOptions": {
-    "project": "gui/tsconfig.json"
+    "project": ["tsconfig.json", "tsconfig.node.json"]
   },
   "extends": [
     // "eslint:recommended",
@@ -12,7 +12,8 @@
     // "plugin:react/recommended"
   ],
   "rules": {
-    "@typescript-eslint/naming-convention": "off"
+    "@typescript-eslint/naming-convention": "off",
+    "@typescript-eslint/no-floating-promises": "warn"
   },
   "overrides": [
     {

@@ -16,9 +16,11 @@ const modelDescriptionSchema = z.object({
     "sagemaker",
     "cloudflare",
     "azure",
+    "ovhcloud",
     "nebius",
     "siliconflow",
     "scaleway",
+    "watsonx"
   ]),
   model: z.string(),
   apiKey: z.string().optional(),
@@ -42,6 +44,7 @@ const modelDescriptionSchema = z.object({
       "llava",
       "gemma",
       "llama3",
+      "codestral",
     ])
     .optional(),
   completionOptions: z
@@ -58,6 +61,7 @@ const modelDescriptionSchema = z.object({
       numThreads: z.number().optional(),
       useMmap: z.boolean().optional(),
       keepAlive: z.number().optional(),
+      numGpu: z.number().optional(),
       raw: z.boolean().optional(),
       stream: z.boolean().optional(),
     })
@@ -85,9 +89,11 @@ const embeddingsProviderSchema = z.object({
     "cohere",
     "free-trial",
     "gemini",
+    "ovhcloud",
     "nebius",
     "siliconflow",
     "scaleway",
+    "watsonx"
   ]),
   apiBase: z.string().optional(),
   apiKey: z.string().optional(),
@@ -109,7 +115,7 @@ const embeddingsProviderSchema = z.object({
 });
 
 const rerankerSchema = z.object({
-  name: z.enum(["cohere", "voyage", "llm"]),
+  name: z.enum(["cohere", "voyage", "llm", "watsonx"]),
   params: z.record(z.any()).optional(),
 });
 

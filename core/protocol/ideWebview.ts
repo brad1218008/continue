@@ -1,25 +1,23 @@
 import { ToIdeFromWebviewOrCoreProtocol } from "./ide";
 import { ToWebviewFromIdeOrCoreProtocol } from "./webview";
 
-import type {
+import {
   ApplyState,
-  CodeToEdit,
-  ContextSubmenuItem,
-  EditStatus,
+  SetCodeToEditPayload,
+  HighlightedCodePayload,
   MessageContent,
   RangeInFileWithContents,
+  AcceptOrRejectDiffPayload,
 } from "../";
 
 export type ToIdeFromWebviewProtocol = ToIdeFromWebviewOrCoreProtocol & {
   openUrl: [string, void];
-  // We pass the `curSelectedModel` because we currently cannot access the
-  // default model title in the GUI from JB
   applyToFile: [
     {
       text: string;
       streamId: string;
-      curSelectedModelTitle: string;
       filepath?: string;
+      toolCallId?: string;
     },
     void,
   ];
@@ -46,17 +44,17 @@ export type ToIdeFromWebviewProtocol = ToIdeFromWebviewOrCoreProtocol & {
   "jetbrains/getColors": [undefined, Record<string, string>];
   "vscode/openMoveRightMarkdown": [undefined, void];
   setGitHubAuthToken: [{ token: string }, void];
-  acceptDiff: [{ filepath: string; streamId?: string }, void];
-  rejectDiff: [{ filepath: string; streamId?: string }, void];
+  acceptDiff: [AcceptOrRejectDiffPayload, void];
+  rejectDiff: [AcceptOrRejectDiffPayload, void];
   "edit/sendPrompt": [
-    { prompt: MessageContent; range: RangeInFileWithContents },
-    void,
+    {
+      prompt: MessageContent;
+      range: RangeInFileWithContents;
+    },
+    string | undefined,
   ];
-  "edit/acceptReject": [
-    { accept: boolean; onlyFirst: boolean; filepath: string },
-    void,
-  ];
-  "edit/exit": [{ shouldFocusEditor: boolean }, void];
+  "edit/addCurrentSelection": [undefined, void];
+  "edit/clearDecorations": [undefined, void];
 };
 
 export type ToWebviewFromIdeProtocol = ToWebviewFromIdeOrCoreProtocol & {
@@ -67,15 +65,8 @@ export type ToWebviewFromIdeProtocol = ToWebviewFromIdeOrCoreProtocol & {
   focusContinueInput: [undefined, void];
   focusContinueInputWithoutClear: [undefined, void];
   focusContinueInputWithNewSession: [undefined, void];
-  highlightedCode: [
-    {
-      rangeInFileWithContents: RangeInFileWithContents;
-      prompt?: string;
-      shouldRun?: boolean;
-    },
-    void,
-  ];
-  addCodeToEdit: [CodeToEdit, void];
+  highlightedCode: [HighlightedCodePayload, void];
+  setCodeToEdit: [SetCodeToEditPayload, void];
   navigateTo: [{ path: string; toggle?: boolean }, void];
   addModel: [undefined, void];
 
@@ -91,8 +82,6 @@ export type ToWebviewFromIdeProtocol = ToWebviewFromIdeOrCoreProtocol & {
   openOnboardingCard: [undefined, void];
   applyCodeFromChat: [undefined, void];
   updateApplyState: [ApplyState, void];
-  setEditStatus: [{ status: EditStatus; fileAfterEdit?: string }, void];
   exitEditMode: [undefined, void];
   focusEdit: [undefined, void];
-  focusEditWithoutClear: [undefined, void];
 };

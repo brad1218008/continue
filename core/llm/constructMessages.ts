@@ -1,143 +1,143 @@
 import {
   ChatHistoryItem,
   ChatMessage,
-  MessagePart,
-  ModelDescription,
+  RuleWithSource,
+  TextMessagePart,
+  ToolResultChatMessage,
+  UserChatMessage,
 } from "../";
+import { findLast } from "../util/findLast";
 import { normalizeToMessageParts } from "../util/messageContent";
+import { isUserOrToolMsg } from "./messages";
+import { getSystemMessageWithRules } from "./rules/getSystemMessageWithRules";
 
-import { modelSupportsTools } from "./autodetect";
+export const DEFAULT_CHAT_SYSTEM_MESSAGE_URL =
+  "https://github.com/continuedev/continue/blob/main/core/llm/constructMessages.ts";
 
-const CUSTOM_SYS_MSG_MODEL_FAMILIES = ["sonnet"];
+export const DEFAULT_AGENT_SYSTEM_MESSAGE_URL =
+  "https://github.com/continuedev/continue/blob/main/core/llm/constructMessages.ts";
 
-const SYSTEM_MESSAGE = `When generating new code:
+const EDIT_MESSAGE = `\
+  Always include the language and file name in the info string when you write code blocks.
+  If you are editing "src/main.py" for example, your code block should start with '\`\`\`python src/main.py'
 
-1. Always produce a single code block.
-2. Never separate the code into multiple code blocks.
-3. Only include the code that is being added.
-4. Replace existing code with a "lazy" comment like this: "// ... existing code ..."
-5. The "lazy" comment must always be a valid comment in the current context (e.g. "<!-- ... existing code ... -->" for HTML, "// ... existing code ..." for JavaScript, "{/* ... existing code */}" for TSX, etc.)
-6. You must always provide 1-2 lines of context above and below a "lazy" comment
-7. If the user submits a code block that contains a filename in the language specifier, always include the filename in any code block you generate based on that file. The filename should be on the same line as the language specifier in your code block.
+  When addressing code modification requests, present a concise code snippet that
+  emphasizes only the necessary changes and uses abbreviated placeholders for
+  unmodified sections. For example:
 
-Example 1:
-Input:
-\`\`\`test.js
-import addition from "addition"
-
-class Calculator {
-  constructor() {
-    this.result = 0;
-  }
-    
-  add(number) {
-    this.result += number;
-    return this;
-  }
-}
-\`\`\`
-User request: Add a subtract method
-
-Output:
-\`\`\`javascript test.js
-// ... existing code ...
-import subtraction from "subtraction"
-
-class Calculator {
+  \`\`\`language /path/to/file
   // ... existing code ...
-  
-  subtract(number) {
-    this.result -= number;
-    return this;
+
+  {{ modified code here }}
+
+  // ... existing code ...
+
+  {{ another modification }}
+
+  // ... rest of code ...
+  \`\`\`
+
+  In existing files, you should always restate the function or class that the snippet belongs to:
+
+  \`\`\`language /path/to/file
+  // ... existing code ...
+
+  function exampleFunction() {
+    // ... existing code ...
+
+    {{ modified code here }}
+
+    // ... rest of function ...
   }
-}
-\`\`\`
 
-Example 2:
-Input:
-\`\`\`javascript test.js (6-9)
-function helloWorld() {}
-\`\`\`
+  // ... rest of code ...
+  \`\`\`
 
-Output:
-\`\`\`javascript test.js
-function helloWorld() {
-  // New code here
-}
-\`\`\`
+  Since users have access to their complete file, they prefer reading only the
+  relevant modifications. It's perfectly acceptable to omit unmodified portions
+  at the beginning, middle, or end of files using these "lazy" comments. Only
+  provide the complete file when explicitly requested. Include a concise explanation
+  of changes unless the user specifically asks for code only.
+`
 
-Always follow these guidelines when generating code responses.`;
+export const DEFAULT_CHAT_SYSTEM_MESSAGE = `\
+<important_rules>
+  You are in chat mode.
 
-const TOOL_USE_RULES = `When using tools, follow the following guidelines:
-- Avoid calling tools unless they are absolutely necessary. For example, if you are asked a simple programming question you do not need web search. As another example, if the user asks you to explain something about code, do not create a new file.`;
+  If the user asks to make changes to files offer that they can use the Apply Button on the code block, or switch to Agent Mode to make the suggested updates automatically.
+  If needed consisely explain to the user they can switch to agent mode using the Mode Selector dropdown and provide no other details.
 
-function constructSystemPrompt(
-  modelDescription: ModelDescription,
-  useTools: boolean,
-): string | null {
-  let systemMessage = "";
-  if (
-    CUSTOM_SYS_MSG_MODEL_FAMILIES.some((family) =>
-      modelDescription.model.includes(family),
-    )
-  ) {
-    systemMessage = SYSTEM_MESSAGE;
-  }
-  if (useTools && modelSupportsTools(modelDescription)) {
-    if (systemMessage) {
-      systemMessage += "\n\n";
-    }
-    systemMessage += TOOL_USE_RULES;
-  }
-  return systemMessage || null;
-}
+${EDIT_MESSAGE}
+</important_rules>`;
 
-const CANCELED_TOOL_CALL_MESSAGE =
-  "This tool call was cancelled by the user. You should clarify next steps, as they don't wish for you to use this tool.";
+export const DEFAULT_AGENT_SYSTEM_MESSAGE = `\
+<important_rules>
+  You are in agent mode.
+
+${EDIT_MESSAGE}
+</important_rules>`;
 
 export function constructMessages(
+  messageMode: string,
   history: ChatHistoryItem[],
-  modelDescription: ModelDescription,
-  useTools: boolean,
+  baseChatOrAgentSystemMessage: string | undefined,
+  rules: RuleWithSource[],
 ): ChatMessage[] {
   const filteredHistory = history.filter(
     (item) => item.message.role !== "system",
   );
   const msgs: ChatMessage[] = [];
 
-  const systemMessage = constructSystemPrompt(modelDescription, useTools);
-  if (systemMessage) {
-    msgs.push({
-      role: "system",
-      content: systemMessage,
-    });
-  }
-
   for (let i = 0; i < filteredHistory.length; i++) {
     const historyItem = filteredHistory[i];
+
+    if (messageMode === "chat") {
+      const toolMessage: ToolResultChatMessage = historyItem.message as ToolResultChatMessage;
+      if (historyItem.toolCallState?.toolCallId || toolMessage.toolCallId) {
+        // remove all tool calls from the history
+        continue;
+      }
+    }
 
     if (historyItem.message.role === "user") {
       // Gather context items for user messages
       let content = normalizeToMessageParts(historyItem.message);
 
-      const ctxItems = historyItem.contextItems.map((ctxItem) => {
-        return { type: "text", text: `${ctxItem.content}\n` } as MessagePart;
-      });
+      const ctxItems = historyItem.contextItems
+        .map((ctxItem) => {
+          return {
+            type: "text",
+            text: `${ctxItem.content}\n`,
+          } as TextMessagePart;
+        })
+        .filter((part) => !!part.text.trim());
 
       content = [...ctxItems, ...content];
       msgs.push({
         ...historyItem.message,
         content,
       });
-    } else if (historyItem.toolCallState?.status === "canceled") {
-      // Canceled tool call
-      msgs.push({
-        ...historyItem.message,
-        content: CANCELED_TOOL_CALL_MESSAGE,
-      });
     } else {
       msgs.push(historyItem.message);
     }
+  }
+
+  const lastUserMsg = findLast(msgs, isUserOrToolMsg) as
+    | UserChatMessage
+    | ToolResultChatMessage
+    | undefined;
+
+  const systemMessage = getSystemMessageWithRules({
+    baseSystemMessage: baseChatOrAgentSystemMessage,
+    rules,
+    userMessage: lastUserMsg,
+  });
+
+  if (systemMessage.trim()) {
+    msgs.unshift({
+      role: "system",
+      content: systemMessage,
+    });
   }
 
   // Remove the "id" from all of the messages

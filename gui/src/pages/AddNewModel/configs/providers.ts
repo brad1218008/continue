@@ -161,6 +161,40 @@ export const providers: Partial<Record<string, ProviderInfo>> = {
     packages: [models.llama31Chat, models.deepseek],
     apiKeyUrl: "https://function.network/join-waitlist",
   },
+  ovhcloud: {
+    title: "OVHcloud",
+    provider: "ovhcloud",
+    refPage: "ovhcloud",
+    description:
+      "OVHcloud AI Endpoints is a serverless inference API that provides access to a curated selection of models (e.g., Llama, Mistral, Qwen, Deepseek). It is designed with security and data privacy in mind and is compliant with GDPR.",
+    longDescription: `To get started, create an API key on the OVHcloud [AI Endpoints website](https://endpoints.ai.cloud.ovh.net/). For more information, including pricing, visit the OVHcloud [AI Endpoints product page](https://www.ovhcloud.com/en/public-cloud/ai-endpoints/).`,
+    params: {
+      apiKey: "",
+    },
+    collectInputFor: [
+      {
+        inputType: "text",
+        key: "apiKey",
+        label: "API key",
+        placeholder: "Enter your AI Endpoints API key",
+        required: true,
+      },
+      ...completionParamsInputsConfigs,
+    ],
+    icon: "ovhcloud.png",
+    tags: [ModelProviderTags.RequiresApiKey, ModelProviderTags.OpenSource],
+    packages: [
+      models.llama318bChat,
+      models.llama3170bChat,
+      models.llama3370bChat,
+      models.codestralMamba,
+      models.mistralOs,
+      models.mistralNemo,
+      models.Qwen25Coder32b,
+      models.deepseekR1DistillLlama70B,
+    ],
+    apiKeyUrl: "https://endpoints.ai.cloud.ovh.net/",
+  },
   scaleway: {
     title: "Scaleway",
     provider: "scaleway",
@@ -409,6 +443,38 @@ Select the \`GPT-4o\` model below to complete your provider configuration, but n
     }),
     apiKeyUrl: "https://api.together.xyz/settings/api-keys",
   },
+  ncompass: {
+    title: "nCompass",
+    provider: "ncompass",
+    refPage: "ncompass",
+    description:
+      "Use the nCompass API for extremely fast streaming of open-source models",
+    icon: "ncompass.png",
+    longDescription: `nCompass is an extremely fast inference engine for open-source language models. To get started, obtain an API key from [their console](https://app.ncompass.tech/api-settings).`,
+    tags: [ModelProviderTags.RequiresApiKey, ModelProviderTags.OpenSource],
+    params: {
+      apiKey: "",
+    },
+    collectInputFor: [
+      {
+        inputType: "text",
+        key: "apiKey",
+        label: "API Key",
+        placeholder: "Enter your nCompass API key",
+        required: true,
+      },
+      ...completionParamsInputsConfigs,
+    ],
+    packages: [
+      models.llama318bChat,
+      models.llama3370bChat,
+      models.Qwen25Coder32b,
+    ].map((p) => {
+      p.params.contextLength = 4096;
+      return p;
+    }),
+    apiKeyUrl: "https://app.ncompass.tech/api-settings",
+  },
   novita: {
     title: "NovitaAI",
     provider: "novita",
@@ -461,7 +527,15 @@ Select the \`GPT-4o\` model below to complete your provider configuration, but n
         required: true,
       },
     ],
-    packages: [models.gemini15Pro, models.geminiPro, models.gemini15Flash],
+    packages: [
+      models.gemini20Flash,
+      models.gemini20FlashLite,
+      models.gemini20FlashImageGeneration,
+      models.gemini25ProExp,
+      models.gemini15Pro,
+      models.geminiPro,
+      models.gemini15Flash,
+    ],
     apiKeyUrl: "https://aistudio.google.com/app/apikey",
   },
   xAI: {
@@ -703,12 +777,12 @@ To get started, [register](https://dataplatform.cloud.ibm.com/registration/stepo
     collectInputFor: [...completionParamsInputsConfigs],
   },
   sambanova: {
-    title: "SambaNova Cloud",
+    title: "SambaNova",
     provider: "sambanova",
     refPage: "sambanova",
     description: "Use SambaNova Cloud for fast inference performance",
     icon: "sambanova.png",
-    longDescription: `The SambaNova Cloud is a cloud platform for running large AI models with the world record Llama 3.1 70B/405B performance. You can sign up [here](https://cloud.sambanova.ai/)`,
+    longDescription: `The SambaNova Cloud is a cloud platform for running large open source AI models with the world record performance and zero data retention. You can sign up [here](http://cloud.sambanova.ai?utm_source=continue&utm_medium=external&utm_campaign=cloud_signup)`,
     tags: [ModelProviderTags.RequiresApiKey, ModelProviderTags.OpenSource],
     params: {
       apiKey: "",
@@ -723,10 +797,19 @@ To get started, [register](https://dataplatform.cloud.ibm.com/registration/stepo
       },
       ...completionParamsInputsConfigs,
     ],
-    packages: [models.llama31Chat].map((p) => {
-      p.params.contextLength = 4096;
-      return p;
-    }),
+    packages:[
+      models.llama4Scout,
+      models.llama4Maverick,
+      models.llama3370BInstruct,
+      models.llama318BInstruct,
+      models.llama31405BInstruct,
+      models.llama321BInstruct,
+      models.llama323BInstruct,
+      models.qwq32B,
+      models.deepseekR1DistillLlama70B,
+      models.deepseekR1,
+      models.deepseekV3
+    ],
     apiKeyUrl: "https://cloud.sambanova.ai/apis",
   },
   cerebras: {
@@ -912,6 +995,26 @@ To get started, [register](https://dataplatform.cloud.ibm.com/registration/stepo
       models.Llama31Nemotron_70b,
     ],
     apiKeyUrl: "https://cloud.siliconflow.cn/account/ak",
+  },
+  venice: {
+    title: "Venice",
+    provider: "venice",
+    icon: "venice.png",
+    description: "Venice.",
+    tags: [ModelProviderTags.RequiresApiKey, ModelProviderTags.OpenSource],
+    collectInputFor: [
+      {
+        inputType: "text",
+        key: "apiKey",
+        label: "API Key",
+        placeholder: "Enter your Venice API key",
+        required: true,
+      },
+    ],
+    packages: [
+      {...models.AUTODETECT}
+    ],
+    apiKeyUrl: "https://venice.ai/chat"
   },
   fujitsu: {
     title: "Fujitsu",

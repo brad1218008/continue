@@ -1,9 +1,11 @@
-import _ from "lodash";
-import { getLocalStorage } from "./localStorage";
-import { KeyboardEvent } from "react";
+import { MessageModes, ModelDescription } from "core";
 import { ProfileDescription } from "core/config/ProfileLifecycleManager";
+import _ from "lodash";
+import { KeyboardEvent } from "react";
+import { getLocalStorage } from "./localStorage";
+import { DEFAULT_CHAT_SYSTEM_MESSAGE, DEFAULT_AGENT_SYSTEM_MESSAGE } from "core/llm/constructMessages";
 
-type Platform = "mac" | "linux" | "windows" | "unknown";
+export type Platform = "mac" | "linux" | "windows" | "unknown";
 
 export function getPlatform(): Platform {
   const platform = window.navigator.platform.toUpperCase();
@@ -50,6 +52,10 @@ export function getAltKeyLabel(): string {
 
 export function getFontSize(): number {
   return getLocalStorage("fontSize") ?? (isJetBrains() ? 15 : 14);
+}
+
+export function fontSize(n: number): string {
+  return `${getFontSize() + n}px`;
 }
 
 export function isJetBrains() {
@@ -108,5 +114,18 @@ export function updatedObj(old: any, pathToValue: { [key: string]: any }) {
 }
 
 export function isLocalProfile(profile: ProfileDescription): boolean {
-  return profile.id === "local";
+  return profile.profileType === "local";
+}
+
+/**
+ * Get the base system message for the agent or chat mode from the model description.
+ */
+export function getBaseSystemMessage(modelDetails: ModelDescription | null, mode: MessageModes) {
+  let baseChatOrAgentSystemMessage: string|undefined
+  if(mode === 'agent') {
+    baseChatOrAgentSystemMessage = modelDetails?.baseAgentSystemMessage ?? DEFAULT_AGENT_SYSTEM_MESSAGE;
+  } else {
+    baseChatOrAgentSystemMessage = modelDetails?.baseChatSystemMessage ?? DEFAULT_CHAT_SYSTEM_MESSAGE;
+  }
+  return baseChatOrAgentSystemMessage
 }

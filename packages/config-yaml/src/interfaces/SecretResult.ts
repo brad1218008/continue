@@ -7,6 +7,7 @@ export enum SecretType {
   NotFound = "not_found",
   ModelsAddOn = "models_add_on",
   FreeTrial = "free_trial",
+  LocalEnv = "local_env",
 }
 
 export interface OrgSecretLocation {
@@ -29,11 +30,18 @@ export interface UserSecretLocation {
 
 export interface ModelsAddOnSecretLocation {
   secretType: SecretType.ModelsAddOn;
+  blockSlug: PackageSlug;
   secretName: string;
 }
 
 export interface FreeTrialSecretLocation {
   secretType: SecretType.FreeTrial;
+  blockSlug: PackageSlug;
+  secretName: string;
+}
+
+export interface LocalEnvSecretLocation {
+  secretType: SecretType.LocalEnv;
   secretName: string;
 }
 
@@ -54,7 +62,8 @@ export type SecretLocation =
   | UserSecretLocation
   | NotFoundSecretLocation
   | ModelsAddOnSecretLocation
-  | FreeTrialSecretLocation;
+  | FreeTrialSecretLocation
+  | LocalEnvSecretLocation;
 
 export function encodeSecretLocation(secretLocation: SecretLocation): string {
   if (secretLocation.secretType === SecretType.Organization) {
@@ -66,9 +75,11 @@ export function encodeSecretLocation(secretLocation: SecretLocation): string {
   } else if (secretLocation.secretType === SecretType.NotFound) {
     return `${SecretType.NotFound}:${secretLocation.secretName}`;
   } else if (secretLocation.secretType === SecretType.ModelsAddOn) {
-    return `${SecretType.ModelsAddOn}:${secretLocation.secretName}`;
+    return `${SecretType.ModelsAddOn}:${encodePackageSlug(secretLocation.blockSlug)}/${secretLocation.secretName}`;
   } else if (secretLocation.secretType === SecretType.FreeTrial) {
-    return `${SecretType.FreeTrial}:${secretLocation.secretName}`;
+    return `${SecretType.FreeTrial}:${encodePackageSlug(secretLocation.blockSlug)}/${secretLocation.secretName}`;
+  } else if (secretLocation.secretType === SecretType.LocalEnv) {
+    return `${SecretType.LocalEnv}:${secretLocation.secretName}`;
   } else {
     throw new Error(`Invalid secret type: ${secretLocation}`);
   }
@@ -107,10 +118,23 @@ export function decodeSecretLocation(secretLocation: string): SecretLocation {
       return {
         secretType: SecretType.ModelsAddOn,
         secretName,
+        blockSlug: {
+          ownerSlug: parts[0],
+          packageSlug: parts[1],
+        },
       };
     case SecretType.FreeTrial:
       return {
         secretType: SecretType.FreeTrial,
+        secretName,
+        blockSlug: {
+          ownerSlug: parts[0],
+          packageSlug: parts[1],
+        },
+      };
+    case SecretType.LocalEnv:
+      return {
+        secretType: SecretType.LocalEnv,
         secretName,
       };
     default:
@@ -130,7 +154,8 @@ export interface FoundSecretResult {
     | OrgSecretLocation
     | PackageSecretLocation
     | ModelsAddOnSecretLocation
-    | FreeTrialSecretLocation;
+    | FreeTrialSecretLocation
+    | LocalEnvSecretLocation;
   fqsn: FQSN;
 }
 
